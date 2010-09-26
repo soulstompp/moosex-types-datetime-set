@@ -7,73 +7,117 @@ use warnings;
 
 our $VERSION = "0.05";
 
+use MooseX::Types::Moose qw/Num HashRef Str/;
+
 use DateTime::Set ();
 use DateTime::Span ();
 use DateTime::SpanSet ();
 
-use MooseX::Types::Moose qw/Num HashRef Str/;
 use MooseX::Types::DateTime;
 
-use MooseX::Types -declare => [qw( DateTimeSet DateTimeSpan DateTimeSpanSet )];
+use namespace::clean;
+
+use MooseX::Types -declare => [qw( DateTimeSet DateTimeSpan DateTimeSpanSet ArrayRefOfDateTimes ArrayRefOfDateTimeSpans ArrayRefOfDateTimeSets HashRefOfDateTimes HashRefOfDateTimeSets HashRefOfDateTimeSpans )];
 
 class_type "DateTime::Set";
 class_type "DateTime::Span";
 class_type "DateTime::SpanSet";
 
-subtype 'DateTimeSet', as 'DateTime::Set';
-subtype 'DateTimeSpan', as 'DateTime::Span';
-subtype 'DateTimeSpanSet', as 'DateTime::SpanSet';
+subtype 'DateTimeSet' 
+    => as 'DateTime::Set';
 
+subtype 'DateTimeSpan' 
+    => as 'DateTime::Span';
 
-subtype 'ArrayRefOfDateTimes', as 'ArrayRef[DateTime]';
-subtype 'ArrayRefOfDateTimeSpans', as 'ArrayRef[DateTime::Span]';
-subtype 'ArrayRefOfDateTimeSets', as 'ArrayRef[DateTime::Set]';
-subtype 'HashRefOfDateTimes', as 'HashRef[DateTime]';
-subtype 'HashRefOfDateTimeSets', as 'HashRef[DateTime]';
-subtype 'HashRefOfDateTimeSpans', as 'HashRef[DateTime]';
+subtype 'DateTimeSpanSet' 
+    => as 'DateTime::SpanSet';
 
+subtype 'ArrayRefOfDateTimes' 
+    => as 'ArrayRef[DateTime]';
 
+subtype 'ArrayRefOfDateTimeSpans'
+    => as 'ArrayRef[DateTimeSpan]';
 
-#TODO: figure out your coercions.
+subtype 'ArrayRefOfDateTimeSets' 
+    => as 'ArrayRef[DateTimeSet]';
+
+subtype 'HashRefOfDateTimes' 
+    => as 'HashRef[DateTime]';
+
+subtype 'HashRefOfDateTimeCandidates' 
+    => as 'HashRef[DateTime|Int]';
+
+subtype 'HashRefOfDateTimeSets' 
+    => as 'HashRef[DateTime]';
+
+subtype 'HashRefOfDateTimeSpans' 
+    => as 'HashRef[DateTime]';
+
+my $datetime_constraint = find_type_constraint('DateTime'); 
+
 our %coercions = (
     "DateTime::Set" => [
-		        from 'DateTime', via {
+		        from 'Int' => via {
+                                         my $date_time = $datetime_constraint->coerce($_);
+
+                                         return DateTime::Set->from_datetimes( dates => [ $date_time ] );
+                                        },
+                        #TODO: why can't use Now here? i get an error everytime that I use it
+		        from 'Str', via {
+                                         return $_ unless $_ eq 'now';
+
+                                         my $date_time = DateTime->now(); 
+                                         return DateTime::Set->from_datetimes( dates => [ $date_time ] );
+                                        },
+		        from 'DateTime' => via {
                                             return DateTime::Set->from_datetimes( dates => [ $_ ] );
                                            },
-        		from 'ArrayRefOfDateTimes', via { 
+        		from 'ArrayRefOfDateTimes' => via { 
                                                        return DateTime::Set->from_datetimes( dates => $_ );
-                                                      },
+                                                      }
                        ],
     "DateTime::Span" => [
-                         from 'HashRefOfDateTimes', via {
-                                                       return DateTime::Span->from_datetimes( %{$_} );
-                                                      },
+                         from 'HashRefOfDateTimeCandidates' => via {
+                                                                  my $args_ref = shift @_;
+                                                       
+                                                                  for my $value (values %$args_ref) {
+                                                                      $value = $datetime_constraint->coerce($value);
+                                                                  }
+
+                                                                  return DateTime::Span->from_datetimes( %{$args_ref} );
+                                                                 },
+                         from 'HashRefOfDateTimeCandidates' => via {
+                                                                  my $args_ref = shift @_;
+                                                         
+                                                                  return DateTime::Span->from_datetimes( %{$args_ref} );
+                                                                 }
                         ],
     "DateTime::SpanSet" => [
-                            from 'Str', via { 
-                                           #TODO: coercion
-                                          },
-                            from 'ArrayRefOfTimeSpans', via {
-                                                           return DateTime::SpanSet->from_spans( spans => [  $_ ] );
-                                                          },
+                            from 'ArrayRefOfDateTimeSpans', via {
+                                                                 return DateTime::SpanSet->from_spans( spans => [  $_ ] );
+                                                                },
                             from 'HashRefOfDateTimeSets', via {
-                                                             return DateTime::SpanSet->from_sets( %{$_} );
-                                                            },
+                                                               return DateTime::SpanSet->from_sets( %{$_} );
+                                                              }
 
                            ],
 );
 
-for my $type ( "DateTime::Set", DateTimeSet ) {
-    coerce $type => @{ $coercions{DateTime} };
+for my $type ( "DateTime::Set", 'DateTimeSet' ) {
+    coerce $type => @{ $coercions{"DateTime::Set"} };
 }
 
-for my $type ( "DateTime::Span", DateTimeSpan ) {
+for my $type ( "DateTime::Span", 'DateTimeSpan' ) {
     coerce $type => @{ $coercions{"DateTime::Span"} };
 }
 
-for my $type ( "DateTime::SpanSet", DateTimeSpanSet ) {
-	coerce $type => @{ $coercions{"DateTime::SpanSet"} };
+for my $type ( "DateTime::SpanSet", 'DateTimeSpanSet' ) {
+    coerce $type => @{ $coercions{"DateTime::SpanSet"} };
 }
+
+no Moose;
+
+1;
 
 __END__
 
